@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 
-snapshotName="backup"
-maxSnap=5
-backupDir="/home/navi/MyWorkspace/snapshots"
-includeFile="/home/navi/MyWorkspace/snapshots/include.list"
-excludeFile="/home/navi/MyWorkspace/snapshots/exclude.list"
-logdir="/var/log/snapshot"
+source snapshot.properties
 datetime=$(date "+%Y-%m-%d %H:%M:%S")
 datetimenum=$(date "+%Y%m%d%H%M%S")
 statusfile="$backupDir/snapshot.status"
