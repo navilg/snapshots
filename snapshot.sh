@@ -15,7 +15,7 @@ rootCheck()
     fi
 }
 
-createBackup()
+renameExistingBackup()
 {
     mkdir "$backupDir" > /dev/null 2>&1
     mkdir "$logdir" > /dev/null 2>&1
@@ -62,19 +62,22 @@ createBackup()
         fi 
 
     done
+}
 
+createBackup()
+{
     echo "Creating $snapshotName.0" | tee -a "$logfile"
     mkdir "$backupDir/$snapshotName.0" > /dev/null 2>&1
     chmod 0755 "$backupDir/$snapshotName.0"
 
-    echo "$datetime" >> "$statusfile"
+    echo "$datetime" > "$statusfile"
     echo "--------------------" >> "$statusfile"
     echo >> "$statusfile"
 
     while read line
     do
         if [ -e "$line" ]; then
-            echo "Backup ... $line  -->  $$backupDir/$snapshotName.0/" | tee -a "$logfile"
+            echo "Backup ... $line  -->  $backupDir/$snapshotName.0/" | tee -a "$logfile"
             rsync -a --delete --numeric-ids --relative --delete-excluded --exclude-from="$excludeFile" --log-file="$logfile" "$line" "$backupDir/$snapshotName.0/"
             if [ $? -eq 0 ]; then
                 echo "DONE" | tee -a "$logfile"
@@ -101,7 +104,58 @@ createBackup()
     fi
 }
 
+resumeBackup()
+{
+    echo "Resuming $snapshotName.0" | tee -a "$logfile"
+    mkdir "$backupDir/$snapshotName.0" > /dev/null 2>&1
+    chmod 0755 "$backupDir/$snapshotName.0"
+
+    resumestatus=0
+
+    while read line
+    do
+        if [[ $(grep -i "$line" "$statusfile" | cut -d "," -f 2) == "OK" ]]; then
+            continue
+        fi
+        resumestatus=1
+        if [ -e "$line" ]; then
+            echo "Backup ... $line  -->  $backupDir/$snapshotName.0/" | tee -a "$logfile"
+            rsync -a --delete --numeric-ids --relative --delete-excluded --exclude-from="$excludeFile" --log-file="$logfile" "$line" "$backupDir/$snapshotName.0/"
+            if [ $? -eq 0 ]; then
+                echo "DONE" | tee -a "$logfile"
+                if [[ $(grep -i "$line" "$statusfile" | cut -d "," -f 2) == "KO" ]]; then
+                    sed -i "s@$line,KO@$line,OK@g" "$statusfile"
+                else
+                    echo "$line,OK" >> "$statusfile"
+                fi
+            else
+                echo "ERROR Detected." | tee -a "$logfile"
+                statusflag=0
+            fi
+        fi
+    done < "$includeFile"
+
+    if [ $resumestatus -eq 0 ]; then
+        echo "Upto date. Nothing remaining to backup." | tee -a "$logfile"
+        exit 0
+    elif [ $statusflag -eq 1 ]; then
+        echo "Backup successfully created." | tee -a "$logfile"
+        exit 0
+    else
+        echo "ERROR detected while backing up." | tee -a "$logfile"
+        exit 1
+    fi
+}
+
 ###########################
 
 rootCheck
-createBackup
+if [ $# -eq 0 ]; then
+    renameExistingBackup
+    createBackup
+elif [ $(echo "$1" | tr [:upper:] [:lower:]) == "resume" ]; then
+    resumeBackup
+else
+    echo "To create new backup, run, snapshot.sh"
+    echo "To resume a failed backup, run, snapshot.sh resume"
+fi
